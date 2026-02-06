@@ -1,0 +1,28 @@
+{
+    "base_oid": "3357c8be7307751d97e4c2dc71a048524442b6d6",
+    "head_oid": "66a21218ff44b2fee9a9ddc098011d712add180f",
+    "file_paths": [
+        "bind.go",
+        "cmd.go",
+        "code.go",
+        "go.mod",
+        "go.sum",
+        "html.go",
+        "main.go",
+        "sync_example.go",
+        "unsafe_example.go",
+        "weak_crypto.go"
+    ],
+    "categories": [
+        "codereview",
+        "codereview",
+        "codereview",
+        "dependencies",
+        "security",
+        "codereview",
+        "codereview",
+        "codereview",
+        "codereview",
+        "codereview"
+    ]
+}
