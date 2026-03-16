@@ -1,700 +1,668 @@
 [
-  {
-    "comments": [
-      {
-        "file_path": "bind.go",
-        "start_line": 10,
-        "end_line": 10,
-        "issue_title": "Insecure network binding",
-        "issue_description": "`net.Listen` binds to all interfaces (`0.0.0.0`)",
-        "issue_detail": "Binding to `0.0.0.0` exposes the application on all network interfaces, potentially making it accessible from untrusted networks and increasing the attack surface.",
-        "comment": "The service listens on `0.0.0.0:2000`, making it accessible from any network interface. This could expose the service to external networks unintentionally, increasing the risk of unauthorized access.\n\nIf the service is intended for local use only, bind to `127.0.0.1` (localhost) instead to limit its exposure.",
-        "fix_steps": "In `bind.go`, inside the `connect` function, change the first argument of `net.Listen` to restrict the service to localhost.\n\n- Old code: `l, err := net.Listen(\"tcp\", \"0.0.0.0:2000\")`\n- New code: `l, err := net.Listen(\"tcp\", \"127.0.0.1:2000\")`\n\nThis change limits network exposure to the local machine only.",
-        "fix_effort_score": 1,
-        "category": "security",
-        "severity": "major",
-        "dimension": "security",
-        "impact_score": 6,
-        "impact_rationale": "High probability (default configuration), moderate impact (unintended network exposure), trivial fix -> good ROI.",
-        "locations_of_interest": [
-          {
-            "identifier_name": "net.Listen",
-            "definition": null,
-            "usages": [
-              { "file_path": "bind.go", "start_line": 10, "end_line": 10 }
-            ]
-          },
-          {
-            "identifier_name": "connect",
-            "definition": {
-              "file_path": "bind.go",
-              "start_line": 9,
-              "end_line": 15
+    {
+        "comments": [
+            {
+                "file_path": "bind.go",
+                "start_line": 10,
+                "end_line": 10,
+                "issue_title": "Insecure network binding",
+                "issue_description": "Service binds to all network interfaces (`0.0.0.0`)",
+                "issue_detail": "Binding to `0.0.0.0` exposes the application on all available network interfaces, potentially including public ones. This could lead to unintended exposure and increase the attack surface if not properly firewalled.",
+                "comment": "The service listens on `0.0.0.0`, making it accessible from any network interface. This can unintentionally expose the service to external networks, increasing the risk of unauthorized access.\n\nIf this service is intended for internal use only, bind it to `localhost` (`127.0.0.1`) instead to limit its accessibility.",
+                "fix_steps": "In `bind.go`, inside the `connect` function, change `net.Listen(\"tcp\", \"0.0.0.0:2000\")` to `net.Listen(\"tcp\", \"127.0.0.1:2000\")` to bind the listener to the local interface only.",
+                "fix_effort_score": 1,
+                "category": "security",
+                "severity": "major",
+                "dimension": "security",
+                "impact_score": 7,
+                "impact_rationale": "High probability (default configuration), significant impact (unintended exposure), easy fix \u2192 high ROI",
+                "locations_of_interest": [
+                    {
+                        "identifier_name": "net.Listen",
+                        "definition": null,
+                        "usages": [
+                            {
+                                "file_path": "bind.go",
+                                "start_line": 10,
+                                "end_line": 10
+                            }
+                        ]
+                    }
+                ]
             },
-            "usages": []
-          }
-        ]
-      },
-      {
-        "file_path": "bind.go",
-        "start_line": 18,
-        "end_line": 18,
-        "issue_title": "Disabled host key verification",
-        "issue_description": "`ssh.InsecureIgnoreHostKey` disables host key validation",
-        "issue_detail": "Using `ssh.InsecureIgnoreHostKey` creates a configuration that does not verify the server's host key, making SSH connections vulnerable to Man-in-the-Middle (MITM) attacks.",
-        "comment": "Using `ssh.InsecureIgnoreHostKey` prepares a configuration that disables SSH host key verification. This allows an attacker to impersonate a server and intercept sensitive information, as the client cannot validate the server's identity. This is insecure and should not be used in production.\n\nUse a `HostKeyCallback` that properly validates the server's host key, for example by using `golang.org/x/crypto/ssh/knownhosts`.",
-        "fix_steps": "In `bind.go`, remove the line `_ = ssh.InsecureIgnoreHostKey()` from the `sshConfigure` function. This function promotes a highly insecure practice and should not be used.\n\nA secure implementation would involve loading known hosts and using them for verification, for example:\n`import \"golang.org/x/crypto/ssh/knownhosts\"\nhostKeyCallback, err := knownhosts.New(\"~/.ssh/known_hosts\")\nif err != nil {\n    log.Fatal(err)\n}\n// Use hostKeyCallback in your ssh.ClientConfig`",
-        "fix_effort_score": 2,
-        "category": "security",
-        "severity": "critical",
-        "dimension": "security",
-        "impact_score": 9,
-        "impact_rationale": "High probability (explicitly insecure code), critical impact (MITM), easy fix -> high ROI.",
-        "locations_of_interest": [
-          {
-            "identifier_name": "ssh.InsecureIgnoreHostKey",
-            "definition": null,
-            "usages": [
-              { "file_path": "bind.go", "start_line": 18, "end_line": 18 }
-            ]
-          },
-          {
-            "identifier_name": "sshConfigure",
-            "definition": {
-              "file_path": "bind.go",
-              "start_line": 17,
-              "end_line": 19
+            {
+                "file_path": "bind.go",
+                "start_line": 18,
+                "end_line": 18,
+                "issue_title": "Disabled SSH host key verification",
+                "issue_description": "`ssh.InsecureIgnoreHostKey` disables host key validation",
+                "issue_detail": "Using `ssh.InsecureIgnoreHostKey` creates an `ssh.HostKeyCallback` that accepts any server host key. This makes SSH connections vulnerable to Man-in-the-Middle (MitM) attacks, allowing an attacker to impersonate the server and intercept traffic.",
+                "comment": "The function `sshConfigure` uses `ssh.InsecureIgnoreHostKey()`, which disables server host key verification. This completely undermines the security of SSH, making connections susceptible to Man-in-the-Middle (MitM) attacks where an adversary can intercept credentials and other sensitive data.\n\nRemove this function and use a secure method for host key verification, such as checking against a `known_hosts` file using `golang.org/x/crypto/ssh/knownhosts`.",
+                "fix_steps": "In `bind.go`, remove the `sshConfigure` function entirely. When configuring an `ssh.ClientConfig`, provide a `HostKeyCallback` that properly validates the server's host key, for example by using the `golang.org/x/crypto/ssh/knownhosts` package to check against a `known_hosts` file.",
+                "fix_effort_score": 2,
+                "category": "security",
+                "severity": "critical",
+                "dimension": "security",
+                "impact_score": 10,
+                "impact_rationale": "High probability (if used), critical impact (MitM, data compromise), moderate fix \u2192 high ROI",
+                "locations_of_interest": [
+                    {
+                        "identifier_name": "ssh.InsecureIgnoreHostKey",
+                        "definition": null,
+                        "usages": [
+                            {
+                                "file_path": "bind.go",
+                                "start_line": 18,
+                                "end_line": 18
+                            }
+                        ]
+                    },
+                    {
+                        "identifier_name": "sshConfigure",
+                        "definition": {
+                            "file_path": "bind.go",
+                            "start_line": 17,
+                            "end_line": 19
+                        },
+                        "usages": []
+                    }
+                ]
             },
-            "usages": []
-          }
-        ]
-      }
-    ]
-  },
-  { "comments": [] },
-  {
-    "comments": [
-      {
-        "file_path": "go.mod",
-        "start_line": 3,
-        "end_line": 3,
-        "issue_title": "Outdated Go version",
-        "issue_description": "`go 1.13` is outdated and no longer receives security updates",
-        "issue_detail": "The specified Go version 1.13 is past its end-of-life. It does not receive security patches for vulnerabilities discovered in the toolchain or standard library, posing a security risk.",
-        "comment": "The `go.mod` file specifies Go version 1.13, which is unsupported and no longer receives security updates. Using an outdated Go version exposes the project to known vulnerabilities in the Go runtime and standard libraries.\n\nUpdate the Go version to a recent, supported version (e.g., 1.21 or newer) to ensure the project benefits from the latest security patches and language features.",
-        "fix_steps": "In `go.mod`, change the line `go 1.13` to a recent supported version, for example `go 1.21`. This ensures the code is built with a toolchain that receives security updates.",
-        "fix_effort_score": 3,
-        "category": "security",
-        "severity": "major",
-        "dimension": "security",
-        "impact_score": 7,
-        "impact_rationale": "High probability (always used), major impact (vulnerable runtime), easy fix -> high ROI.",
-        "locations_of_interest": []
-      },
-      {
-        "file_path": "go.mod",
-        "start_line": 5,
-        "end_line": 5,
-        "issue_title": "Outdated crypto library",
-        "issue_description": "`golang.org/x/crypto` version from 2020 has known vulnerabilities",
-        "issue_detail": "The dependency `golang.org/x/crypto` is pinned to a version from November 2020. This version is vulnerable to multiple known security issues, such as CVE-2020-29652 and others.",
-        "comment": "The project depends on an old version of `golang.org/x/crypto` from 2020. This version contains multiple known vulnerabilities that could be exploited, for example, to cause a denial of service in the SSH server.\n\nUpdate this dependency to the latest stable version to incorporate security fixes. Run `go get -u golang.org/x/crypto` to update to the latest version.",
-        "fix_steps": "In the project's root directory, run the command `go get -u golang.org/x/crypto`. This will automatically update the `go.mod` and `go.sum` files to use the latest secure version of the `golang.org/x/crypto` package, mitigating known vulnerabilities present in the outdated version.",
-        "fix_effort_score": 3,
-        "category": "security",
-        "severity": "critical",
-        "dimension": "security",
-        "impact_score": 9,
-        "impact_rationale": "High probability (dependency is included), critical impact (crypto vulnerabilities), easy fix -> high ROI.",
-        "locations_of_interest": []
-      }
-    ]
-  },
-  {
-    "comments": [
-      {
-        "file_path": "cmd.go",
-        "start_line": 75,
-        "end_line": 75,
-        "issue_title": "Insecure file permissions",
-        "issue_description": "`os.OpenFile` uses overly permissive `0755` file mode",
-        "issue_detail": "Creating files with world-readable and executable permissions (`0755`) can lead to information disclosure if sensitive data is written to them by other parts of the application.",
-        "comment": "The file `notes.txt` is created with permissions that allow any user on the system to read and execute it. If sensitive information is ever stored in this file, it will be exposed to unauthorized users.\n\nReplace the `0755` permission with a more restrictive one, such as `0600` (only owner can read/write) or `0644` (owner can read/write, others can only read).",
-        "fix_steps": "In `cmd.go`, line 75, change the third argument of `os.OpenFile` from `0755` to `0600`. This ensures the created file is only accessible by its owner, preventing potential information disclosure.",
-        "fix_effort_score": 1,
-        "category": "security",
-        "severity": "major",
-        "dimension": "security",
-        "impact_score": 6,
-        "impact_rationale": "High probability (always occurs), moderate impact (potential information disclosure), trivial fix.",
-        "locations_of_interest": [
-          {
-            "identifier_name": "os.OpenFile",
-            "definition": null,
-            "usages": [
-              { "file_path": "cmd.go", "start_line": 75, "end_line": 75 }
-            ]
-          }
-        ]
-      },
-      {
-        "file_path": "cmd.go",
-        "start_line": 87,
-        "end_line": 87,
-        "issue_title": "Predictable temporary filename",
-        "issue_description": "`os.Create` is used with a static filename for a temporary file",
-        "issue_detail": "The function `createTempFile` creates a file with a predictable name (`emptyFile.txt`). This can lead to a race condition where an attacker pre-creates the file (e.g., as a symlink) to cause data to be written to an unintended location.",
-        "comment": "Using a fixed filename for a temporary file creates a potential race condition (TOCTOU). An attacker could create a symbolic link at `emptyFile.txt` pointing to a sensitive file, potentially causing it to be overwritten, corrupted, or read by the application.\n\nUse `os.CreateTemp` to create a temporary file with a unique, unpredictable name in a secure temporary directory. This mitigates the risk of an attacker predicting and manipulating the file path.",
-        "fix_steps": "In `cmd.go`, inside the `createTempFile` function, replace `tmpFile, _ := os.Create(\"emptyFile.txt\")` with `tmpFile, err := os.CreateTemp(\"\", \"emptyFile.*.txt\")`. Then, add error handling: `if err != nil { log.Fatal(err) }`. This uses a secure method for temporary file creation and ensures errors are handled.",
-        "fix_effort_score": 2,
-        "category": "security",
-        "severity": "major",
-        "dimension": "security",
-        "impact_score": 7,
-        "impact_rationale": "High probability (every call), moderate impact (potential file overwrite/TOCTOU), easy fix.",
-        "locations_of_interest": [
-          {
-            "identifier_name": "createTempFile",
-            "definition": {
-              "file_path": "cmd.go",
-              "start_line": 86,
-              "end_line": 90
+            {
+                "file_path": "bind.go",
+                "start_line": 9,
+                "end_line": 15,
+                "issue_title": "Unused network listener",
+                "issue_description": "Network listener is created but never used to accept connections",
+                "issue_detail": "The `connect` function initializes a TCP listener but does not enter a loop to accept incoming connections. The function returns immediately, causing the listener to be closed, which makes the server non-functional.",
+                "comment": "The `connect` function creates a network listener `l` but doesn't use it to accept any connections. The function exits immediately, and the deferred `l.Close()` call closes the listener, so no connections can ever be handled.\n\nImplement a connection-handling loop using `l.Accept()` to make the server functional, or remove this function if it is unused placeholder code.",
+                "fix_steps": "In `bind.go`, modify the `connect` function to include a loop that accepts and handles incoming connections. For example, add `for { conn, err := l.Accept(); if err != nil { log.Print(err); continue }; go handleConnection(conn) }` after the `defer l.Close()` line, and define a `handleConnection` function.",
+                "fix_effort_score": 2,
+                "category": "bug-risk",
+                "severity": "major",
+                "dimension": "reliability",
+                "impact_score": 6,
+                "impact_rationale": "High probability (always occurs), major impact (non-functional code), moderate fix \u2192 good ROI",
+                "locations_of_interest": [
+                    {
+                        "identifier_name": "connect",
+                        "definition": {
+                            "file_path": "bind.go",
+                            "start_line": 9,
+                            "end_line": 15
+                        },
+                        "usages": []
+                    },
+                    {
+                        "identifier_name": "l",
+                        "definition": {
+                            "file_path": "bind.go",
+                            "start_line": 10,
+                            "end_line": 10
+                        },
+                        "usages": [
+                            {
+                                "file_path": "bind.go",
+                                "start_line": 14,
+                                "end_line": 14
+                            }
+                        ]
+                    }
+                ]
+            }
+        ],
+        "ai_overview": "",
+        "file_path": "bind.go"
+    },
+    {
+        "comments": [
+            {
+                "file_path": "html.go",
+                "start_line": 15,
+                "end_line": 15,
+                "issue_title": "Cross-site scripting vulnerability",
+                "issue_description": "`template.HTML` bypasses contextual auto-escaping, creating an XSS risk",
+                "issue_detail": "Casting variable `a` to `template.HTML` marks it as trusted HTML. If `a` contains user-provided content, this can lead to script execution in the browser, causing an XSS vulnerability.",
+                "comment": "The code uses `template.HTML(a)` to inject a variable into an HTML template. This function explicitly disables Go's built-in contextual auto-escaping, which is a primary defense against Cross-Site Scripting (XSS). If the variable `a` originates from an untrusted source, such as user input, this creates a direct XSS vulnerability, allowing an attacker to execute arbitrary scripts in the user's browser.\n\nAvoid using `template.HTML` with data that is not strictly controlled and sanitized. Remove the type conversion and allow the `html/template` engine to handle escaping automatically.",
+                "fix_steps": "In `html.go`, line 15, modify the `Body` field assignment to remove the `template.HTML` cast. Change ` \"Body\":  template.HTML(a),` to `\"Body\":  a,`. This will enable the `html/template` package's default auto-escaping mechanism for the content of variable `a`, mitigating the XSS risk.",
+                "fix_effort_score": 1,
+                "category": "security",
+                "severity": "critical",
+                "dimension": "security",
+                "impact_score": 9,
+                "impact_rationale": "High probability (dangerous pattern), severe impact (XSS), and a simple fix result in a high ROI.",
+                "locations_of_interest": [
+                    {
+                        "identifier_name": "a",
+                        "definition": {
+                            "file_path": "html.go",
+                            "start_line": 11,
+                            "end_line": 11
+                        },
+                        "usages": [
+                            {
+                                "file_path": "html.go",
+                                "start_line": 15,
+                                "end_line": 15
+                            }
+                        ]
+                    },
+                    {
+                        "identifier_name": "template.HTML",
+                        "definition": null,
+                        "usages": [
+                            {
+                                "file_path": "html.go",
+                                "start_line": 15,
+                                "end_line": 15
+                            }
+                        ]
+                    }
+                ]
             },
-            "usages": []
-          },
-          {
-            "identifier_name": "os.Create",
-            "definition": null,
-            "usages": [
-              { "file_path": "cmd.go", "start_line": 87, "end_line": 87 }
-            ]
-          }
-        ]
-      },
-      {
-        "file_path": "cmd.go",
-        "start_line": 87,
-        "end_line": 87,
-        "issue_title": "Ignored file creation error",
-        "issue_description": "Error from `os.Create` is discarded using the blank identifier",
-        "issue_detail": "The error returned by `os.Create` is ignored. If the file cannot be created, the program will continue executing silently, which can lead to unexpected behavior or panics if the file handle is used later.",
-        "comment": "The error returned from the `os.Create` call is discarded using the blank identifier `_`. This practice can hide bugs and lead to unpredictable program behavior. If file creation fails (e.g., due to disk space or permissions issues), subsequent operations assuming the file exists may fail unexpectedly or cause a panic.\n\nAlways check for errors returned by file I/O operations. Assign the error to a variable and handle it appropriately, for instance by logging it or returning it from the function to the caller.",
-        "fix_steps": "In `cmd.go`, line 87, modify the call to `os.Create` to handle the error. Change `tmpFile, _ := os.Create(\"emptyFile.txt\")` to `tmpFile, err := os.Create(\"emptyFile.txt\")`. On the next line, add `if err != nil { log.Printf(\"failed to create file: %v\", err) }`. This ensures that any failure during file creation is logged.",
-        "fix_effort_score": 2,
-        "category": "bug-risk",
-        "severity": "major",
-        "dimension": "reliability",
-        "impact_score": 7,
-        "impact_rationale": "High probability (error is always ignored), moderate impact (can lead to panics or silent failures), easy fix.",
-        "locations_of_interest": [
-          {
-            "identifier_name": "os.Create",
-            "definition": null,
-            "usages": [
-              { "file_path": "cmd.go", "start_line": 87, "end_line": 87 }
-            ]
-          }
-        ]
-      }
-    ]
-  },
-  {
-    "comments": [
-      {
-        "file_path": "weak_crypto.go",
-        "start_line": 13,
-        "end_line": 13,
-        "issue_title": "Weak hashing algorithm",
-        "issue_description": "`crypto/md5` is a cryptographically broken hashing algorithm",
-        "issue_detail": "The MD5 algorithm is vulnerable to collision attacks, making it unsuitable for security-sensitive applications like password hashing or data integrity checks. An attacker could create a malicious input with the same hash as a legitimate one.",
-        "comment": "The code uses `md5.Sum`, which implements the MD5 hashing algorithm. MD5 is known to have severe cryptographic weaknesses and is considered broken. It is susceptible to collision attacks, which could allow an attacker to forge data or bypass integrity checks.\n\nReplace `crypto/md5` with a modern, secure hashing algorithm like SHA-256 from the `crypto/sha256` package.",
-        "fix_steps": "In `weak_crypto.go`, replace the import on line 4 from `\"crypto/md5\"` to `\"crypto/sha256\"`. Then, on line 13, replace the call to `md5.Sum([]byte(arg))` with `sha256.Sum256([]byte(arg))`. This replaces the broken MD5 algorithm with the secure SHA-256 algorithm.",
-        "fix_effort_score": 3,
-        "category": "security",
-        "severity": "critical",
-        "dimension": "security",
-        "impact_score": 9,
-        "impact_rationale": "High probability (always used), severe impact (data integrity compromised), simple fix \u2192 high ROI.",
-        "locations_of_interest": [
-          {
-            "identifier_name": "md5.Sum",
-            "definition": null,
-            "usages": [
-              {
+            {
+                "file_path": "html.go",
+                "start_line": 8,
+                "end_line": 8,
+                "issue_title": "Empty template string",
+                "issue_description": "Template string `tmpl` is empty, producing no output",
+                "issue_detail": "The `tmpl` constant is an empty string. Executing an empty template results in no output, and the data passed in the `v` map is ignored, making the function's work pointless.",
+                "comment": "The template string `tmpl` is empty. Consequently, when `t.Execute` is called, it will not generate any output, and the data provided in the `v` map (`Title` and `Body`) will be ignored. This renders the function's primary logic ineffective.\n\nTo fix this, populate the `tmpl` string with valid template actions that use the data, for example: `const tmpl = \"<h1>{{.Title}}</h1><div>{{.Body}}</div>\"`.",
+                "fix_steps": "In `html.go`, at line 8, replace the empty string assigned to `tmpl` with a valid HTML template string that uses the data from the map. Change `const tmpl = \"\"` to `const tmpl = \"<h1>{{.Title}}</h1><div>{{.Body}}</div>\"`. This ensures the data passed to `t.Execute` is rendered in the output.",
+                "fix_effort_score": 1,
+                "category": "bug-risk",
+                "severity": "major",
+                "dimension": "reliability",
+                "impact_score": 7,
+                "impact_rationale": "High probability (always occurs), major impact (function is non-operational), and an easy fix result in a high ROI.",
+                "locations_of_interest": [
+                    {
+                        "identifier_name": "tmpl",
+                        "definition": {
+                            "file_path": "html.go",
+                            "start_line": 8,
+                            "end_line": 8
+                        },
+                        "usages": [
+                            {
+                                "file_path": "html.go",
+                                "start_line": 12,
+                                "end_line": 12
+                            }
+                        ]
+                    },
+                    {
+                        "identifier_name": "v",
+                        "definition": {
+                            "file_path": "html.go",
+                            "start_line": 13,
+                            "end_line": 13
+                        },
+                        "usages": [
+                            {
+                                "file_path": "html.go",
+                                "start_line": 17,
+                                "end_line": 17
+                            }
+                        ]
+                    },
+                    {
+                        "identifier_name": "t.Execute",
+                        "definition": null,
+                        "usages": [
+                            {
+                                "file_path": "html.go",
+                                "start_line": 17,
+                                "end_line": 17
+                            }
+                        ]
+                    }
+                ]
+            }
+        ],
+        "ai_overview": "",
+        "file_path": "html.go"
+    },
+    {
+        "comments": [],
+        "ai_overview": "",
+        "file_path": "main.go"
+    },
+    {
+        "comments": [
+            {
+                "file_path": "go.sum",
+                "start_line": 1,
+                "end_line": 10,
+                "issue_title": "Outdated dependencies with known vulnerabilities",
+                "issue_description": "Dependencies in `go.sum` are severely outdated, posing a security risk",
+                "issue_detail": "The locked versions for `golang.org/x/crypto`, `golang.org/x/net`, `golang.org/x/sys`, `golang.org/x/term`, and `golang.org/x/text` are from 2019-2020. These versions are no longer supported and likely contain unpatched vulnerabilities.",
+                "comment": "The `go.sum` file locks multiple dependencies to versions from 2019 and 2020, which are severely outdated. Critical packages like `golang.org/x/crypto`, `golang.org/x/net`, and `golang.org/x/text` have had numerous security vulnerabilities discovered and patched in the years since these versions were released.\n\nRun `go get -u all` and `go mod tidy` in the terminal at the project root to update all dependencies to their latest stable versions and ensure the project is not exposed to known vulnerabilities.",
+                "fix_steps": "In your terminal, at the root of this Go module, run the following commands to update all dependencies to their latest versions and synchronize the `go.sum` file:\n1. `go get -u all`\n2. `go mod tidy`\n\nThis will fetch the latest secure versions of all packages and update the `go.mod` and `go.sum` files accordingly.",
+                "fix_effort_score": 3,
+                "category": "security",
+                "severity": "critical",
+                "dimension": "security",
+                "impact_score": 9,
+                "impact_rationale": "High probability (dependencies from 2019-2020 almost certainly have known CVEs), severe impact (exploitation of crypto flaws), moderate effort (updating may introduce breaking changes) = Score 9.",
+                "locations_of_interest": []
+            }
+        ],
+        "ai_overview": "",
+        "file_path": "go.sum"
+    },
+    {
+        "comments": [
+            {
+                "file_path": "go.mod",
+                "start_line": 3,
+                "end_line": 3,
+                "issue_title": "Unsupported Go version,locations_of_interest:[],severity:",
+                "issue_description": "`go 1.13` is used, which is past its end-of-life",
+                "issue_detail": "Go 1.13 is no longer supported and does not receive security updates, exposing the application to known vulnerabilities that have been patched in newer versions of the Go toolchain.",
+                "comment": "The `go.mod` file specifies Go version 1.13, which has reached its end-of-life and is no longer supported. Using EOL versions means the project will not receive critical security patches for the toolchain and standard library, leaving it vulnerable to known exploits.\n\nUpdate the Go version in `go.mod` to a recent, supported version (e.g., 1.21 or newer) and run `go mod tidy` to ensure compatibility with the new toolchain.",
+                "fix_steps": "In `go.mod`, change the line `go 1.13` to a supported version like `go 1.21`. This is necessary because Go 1.13 is no longer receiving security updates. After updating the file, run `go mod tidy` from your terminal to synchronize dependencies.",
+                "fix_effort_score": 3,
+                "category": "security",
+                "severity": "critical",
+                "dimension": "security",
+                "impact_score": 9,
+                "impact_rationale": "High probability (affects entire build), critical impact (unpatched toolchain vulnerabilities), moderate effort (requires toolchain update and dependency check) \u2192 Score 9",
+                "locations_of_interest": []
+            },
+            {
+                "file_path": "go.mod",
+                "start_line": 5,
+                "end_line": 5,
+                "issue_title": "Outdated cryptography module,locations_of_interest:[],severity:",
+                "issue_description": "`golang.org/x/crypto` version is from 2020",
+                "issue_detail": "The specified version of `golang.org/x/crypto` is severely outdated and lacks numerous security fixes for vulnerabilities discovered since 2020, such as CVE-2022-32149.",
+                "comment": "The `golang.org/x/crypto` dependency is pinned to a version from November 2020. Cryptography libraries are frequent targets for security research, and this version is missing years of critical security patches for vulnerabilities that have since been discovered and fixed.\n\nUpdate the dependency to the latest stable version by running `go get golang.org/x/crypto@latest` from your terminal, which will automatically update `go.mod` and `go.sum`.",
+                "fix_steps": "To fix the outdated `golang.org/x/crypto` dependency, run the command `go get golang.org/x/crypto@latest` in your project's root directory. This command will fetch the latest stable version of the package and update the `go.mod` and `go.sum` files accordingly, patching potential security vulnerabilities.",
+                "fix_effort_score": 3,
+                "category": "security",
+                "severity": "critical",
+                "dimension": "security",
+                "impact_score": 10,
+                "impact_rationale": "High probability (dependency is used for crypto), critical impact (known vulnerabilities in crypto code), moderate effort (requires dependency update and testing) \u2192 Score 10",
+                "locations_of_interest": []
+            }
+        ],
+        "ai_overview": "",
+        "file_path": "go.mod"
+    },
+    {
+        "comments": [
+            {
+                "file_path": "code.go",
+                "start_line": 149,
+                "end_line": 161,
+                "issue_title": "Inefficient memory allocation in unused function",
+                "issue_description": "Unused function `traverseProducts` contains a loop with quadratic memory allocation",
+                "issue_detail": "The function `traverseProducts` is uncalled dead code. Furthermore, its loop allocates a slice `productMap` in each iteration, leading to O(N^2) memory allocation that can cause severe performance issues and memory exhaustion.",
+                "comment": "The function `traverseProducts` is unused and contains a highly inefficient loop. This loop allocates a new slice in each of its 2048 iterations, with the slice size growing linearly. This results in quadratic memory allocation, consuming approximately 4GB of memory in total and putting extreme pressure on the garbage collector.\n\nSince the function is dead code, it should be removed entirely.",
+                "fix_steps": "In `code.go`, the function `traverseProducts` is unused and contains a highly inefficient loop causing excessive memory allocation.\n\nTo fix this, remove the entire `traverseProducts` function definition from line 149 to 161.",
+                "fix_effort_score": 1,
+                "category": "performance",
+                "severity": "major",
+                "dimension": "reliability",
+                "impact_score": 8,
+                "impact_rationale": "High probability (if ever called), severe impact (potential OOM), trivial fix (delete dead code) -> high ROI.",
+                "locations_of_interest": [
+                    {
+                        "identifier_name": "traverseProducts",
+                        "definition": {
+                            "file_path": "code.go",
+                            "start_line": 149,
+                            "end_line": 161
+                        },
+                        "usages": []
+                    },
+                    {
+                        "identifier_name": "productMap",
+                        "definition": {
+                            "file_path": "code.go",
+                            "start_line": 156,
+                            "end_line": 156
+                        },
+                        "usages": [
+                            {
+                                "file_path": "code.go",
+                                "start_line": 157,
+                                "end_line": 157
+                            }
+                        ]
+                    }
+                ]
+            }
+        ],
+        "ai_overview": "",
+        "file_path": "code.go"
+    },
+    {
+        "comments": [
+            {
+                "file_path": "cmd.go",
+                "start_line": 87,
+                "end_line": 87,
+                "issue_title": "Ignored error and resource leak",
+                "issue_description": "Error from `os.Create` is ignored and the file handle is not closed",
+                "issue_detail": "",
+                "comment": "The error returned by `os.Create` is ignored using the blank identifier `_`, and the returned file handle is never closed. Ignoring the error can mask critical filesystem issues like permission errors or a full disk, leading to silent failures. Not closing the file causes a resource leak, which can exhaust the process's available file descriptors in a long-running application.\n\nAlways check errors returned from I/O operations and use a `defer` statement to ensure resources like file handles are closed, even if errors occur.",
+                "fix_steps": "In `cmd.go`, rewrite the `createTempFile` function to handle the error from `os.Create` and to close the file handle using `defer`.\n\nReplace:\n`tmpFile, _ := os.Create(\"emptyFile.txt\")`\n\nWith:\n`tmpFile, err := os.Create(\"emptyFile.txt\")\nif err != nil {\n    log.Println(err)\n    return\n}\ndefer tmpFile.Close()`",
+                "fix_effort_score": 2,
+                "category": "bug-risk",
+                "severity": "major",
+                "dimension": "reliability",
+                "impact_score": 8,
+                "impact_rationale": "High probability (every call), severe impact (silent failures and resource exhaustion), easy fix -> high ROI.",
+                "locations_of_interest": [
+                    {
+                        "identifier_name": "os.Create",
+                        "definition": null,
+                        "usages": [
+                            {
+                                "file_path": "cmd.go",
+                                "start_line": 87,
+                                "end_line": 87
+                            }
+                        ]
+                    },
+                    {
+                        "identifier_name": "tmpFile",
+                        "definition": {
+                            "file_path": "cmd.go",
+                            "start_line": 87,
+                            "end_line": 87
+                        },
+                        "usages": [
+                            {
+                                "file_path": "cmd.go",
+                                "start_line": 88,
+                                "end_line": 88
+                            }
+                        ]
+                    }
+                ]
+            }
+        ],
+        "ai_overview": "",
+        "file_path": "cmd.go"
+    },
+    {
+        "comments": [
+            {
+                "file_path": "sync_example.go",
+                "start_line": 8,
+                "end_line": 22,
+                "issue_title": "Race condition on global variable",
+                "issue_description": "Global `dataLarge` modified in benchmark loop causes data race",
+                "issue_detail": "The benchmark `benchmarkLargeSizePool` assigns to the package-level variable `dataLarge` in its loop. This is not thread-safe and will lead to a data race if the test is executed with parallelism, for example using `b.RunParallel` or the `-cpu` flag.",
+                "comment": "The function `benchmarkLargeSizePool` modifies the global variable `dataLarge` within its loop. This creates a data race if the benchmark is run in parallel, as multiple goroutines would attempt to write to the same variable without synchronization. This is a common and serious error when writing benchmarks.\n\nTo resolve this, use a local variable within the loop instead of a global one. This ensures each goroutine operates on its own data, eliminating the race condition and making the benchmark safe for parallel execution.",
+                "fix_steps": "In `sync_example.go`, modify the `benchmarkLargeSizePool` function. Replace the use of the global variable `dataLarge` with a local variable `data` inside the `for` loop. The line `_ = dataLarge` can be removed.\n\nChange from:\n```go\n\tfor i := 0; i < b.N; i++ {\n\t\tdataLarge = bytePool.Get().([]byte)\n\t\t_ = dataLarge\n\t\tbytePool.Put(dataLarge)\n\t}\n```\n\nTo:\n```go\n\tfor i := 0; i < b.N; i++ {\n\t\tdata := bytePool.Get().([]byte)\n\t\tbytePool.Put(data)\n\t}\n```",
+                "fix_effort_score": 2,
+                "category": "bug-risk",
+                "severity": "major",
+                "dimension": "reliability",
+                "impact_score": 7,
+                "impact_rationale": "High probability if benchmark is parallelized, severe impact from data race, and an easy fix results in a high ROI.",
+                "locations_of_interest": [
+                    {
+                        "identifier_name": "dataLarge",
+                        "definition": {
+                            "file_path": "sync_example.go",
+                            "start_line": 8,
+                            "end_line": 8
+                        },
+                        "usages": [
+                            {
+                                "file_path": "sync_example.go",
+                                "start_line": 20,
+                                "end_line": 20
+                            },
+                            {
+                                "file_path": "sync_example.go",
+                                "start_line": 21,
+                                "end_line": 21
+                            },
+                            {
+                                "file_path": "sync_example.go",
+                                "start_line": 22,
+                                "end_line": 22
+                            }
+                        ]
+                    },
+                    {
+                        "identifier_name": "benchmarkLargeSizePool",
+                        "definition": {
+                            "file_path": "sync_example.go",
+                            "start_line": 12,
+                            "end_line": 24
+                        },
+                        "usages": []
+                    }
+                ]
+            }
+        ],
+        "ai_overview": "",
+        "file_path": "sync_example.go"
+    },
+    {
+        "comments": [
+            {
                 "file_path": "weak_crypto.go",
                 "start_line": 13,
-                "end_line": 13
-              }
-            ]
-          }
-        ]
-      },
-      {
-        "file_path": "weak_crypto.go",
-        "start_line": 19,
-        "end_line": 19,
-        "issue_title": "Insecure RSA key length",
-        "issue_description": "RSA key generated with an insufficient key size of 1024 bits",
-        "issue_detail": "RSA keys with a length of 1024 bits are considered weak and are vulnerable to factorization attacks. Current industry standards recommend a minimum key size of 2048 bits for RSA.",
-        "comment": "The function `rsa.GenerateKey` is called with a key size of 1024 bits. This key length is no longer considered secure against modern cryptanalytic attacks and could be factored, compromising any data encrypted or signed with it.\n\nIncrease the key size to at least 2048 bits. For example, `rsa.GenerateKey(rand.Reader, 2048)`.",
-        "fix_steps": "In `weak_crypto.go`, on line 19, change `rsa.GenerateKey(rand.Reader, 1024)` to `rsa.GenerateKey(rand.Reader, 2048)`. This increases the RSA key size to the recommended minimum of 2048 bits, making it resistant to current factorization attacks.",
-        "fix_effort_score": 1,
-        "category": "security",
-        "severity": "critical",
-        "dimension": "security",
-        "impact_score": 9,
-        "impact_rationale": "High probability (always used), severe impact (key compromise), trivial fix \u2192 high ROI.",
-        "locations_of_interest": [
-          {
-            "identifier_name": "rsa.GenerateKey",
-            "definition": null,
-            "usages": [
-              {
+                "end_line": 13,
+                "issue_title": "Weak hashing algorithm",
+                "issue_description": "Use of `crypto/md5` which is cryptographically broken",
+                "issue_detail": "The MD5 algorithm is vulnerable to collision attacks, making it unsuitable for security-sensitive contexts like integrity checks or digital signatures. An attacker could create malicious data with the same hash as legitimate data.",
+                "comment": "The code uses `md5.Sum` to compute a hash. MD5 is a deprecated cryptographic hash function with known collision vulnerabilities, rendering it insecure for any security-related purpose.\n\nReplace `md5.Sum` with a modern, secure hashing algorithm such as `sha256.Sum256` from the `crypto/sha256` package.",
+                "fix_steps": "In `weak_crypto.go`, change line 4 from `\"crypto/md5\"` to `\"crypto/sha256\"`. Then, in the `makeMD5Hash` function, replace line 13 `fmt.Printf(\"%x - %s\\n\", md5.Sum([]byte(arg)), arg)` with `fmt.Printf(\"%x - %s\\n\", sha256.Sum256([]byte(arg)), arg)`. This replaces the weak MD5 algorithm with the secure SHA-256 algorithm.",
+                "fix_effort_score": 2,
+                "category": "security",
+                "severity": "critical",
+                "dimension": "security",
+                "impact_score": 9,
+                "impact_rationale": "High probability (used directly), severe impact (compromised integrity), easy fix -> high ROI.",
+                "locations_of_interest": [
+                    {
+                        "identifier_name": "md5.Sum",
+                        "definition": null,
+                        "usages": [
+                            {
+                                "file_path": "weak_crypto.go",
+                                "start_line": 13,
+                                "end_line": 13
+                            }
+                        ]
+                    }
+                ]
+            },
+            {
                 "file_path": "weak_crypto.go",
                 "start_line": 19,
-                "end_line": 19
-              }
-            ]
-          }
-        ]
-      },
-      {
-        "file_path": "weak_crypto.go",
-        "start_line": 23,
-        "end_line": 23,
-        "issue_title": "Private key disclosure",
-        "issue_description": "The generated RSA private key is printed to standard output",
-        "issue_detail": "Printing sensitive cryptographic material like a private key to logs or standard output can lead to its exposure. If these logs are stored or transmitted insecurely, an attacker could gain access to the key.",
-        "comment": "The code prints the generated RSA private key (`pvk`) directly to standard output using `fmt.Println`. This is a dangerous practice as it exposes the key in logs or console output, making it accessible to anyone who can view them.\n\nRemove the line `fmt.Println(pvk)`. Private keys should be stored securely (e.g., in a protected file or a key management system) and never printed.",
-        "fix_steps": "In `weak_crypto.go`, remove line 23 (`fmt.Println(pvk)`). This prevents the RSA private key from being exposed by printing it to standard output.",
-        "fix_effort_score": 1,
-        "category": "security",
-        "severity": "critical",
-        "dimension": "security",
-        "impact_score": 10,
-        "impact_rationale": "High probability (always occurs), critical impact (private key leak), trivial fix \u2192 high ROI.",
-        "locations_of_interest": [
-          {
-            "identifier_name": "pvk",
-            "definition": {
-              "file_path": "weak_crypto.go",
-              "start_line": 19,
-              "end_line": 19
+                "end_line": 19,
+                "issue_title": "Insecure RSA key length",
+                "issue_description": "RSA key of 1024 bits is too short and insecure",
+                "issue_detail": "An RSA key length of 1024 bits is considered weak and is vulnerable to factorization attacks with modern computing power. Current industry standards (e.g., NIST) mandate a minimum key size of 2048 bits.",
+                "comment": "The `rsa.GenerateKey` function is called with a keysize of 1024 bits. This key length is insufficient and vulnerable to factorization, which would allow an attacker to decrypt messages or forge signatures.\n\nIncrease the key size to a minimum of 2048 bits to ensure adequate cryptographic strength. For example: `rsa.GenerateKey(rand.Reader, 2048)`.",
+                "fix_steps": "In `weak_crypto.go`, inside the `generateRSAKey` function, change line 19 from `pvk, err := rsa.GenerateKey(rand.Reader, 1024)` to `pvk, err := rsa.GenerateKey(rand.Reader, 2048)`. This increases the RSA key size to the recommended minimum of 2048 bits.",
+                "fix_effort_score": 1,
+                "category": "security",
+                "severity": "critical",
+                "dimension": "security",
+                "impact_score": 9,
+                "impact_rationale": "High probability (used directly), severe impact (compromised confidentiality), easy fix -> high ROI.",
+                "locations_of_interest": [
+                    {
+                        "identifier_name": "rsa.GenerateKey",
+                        "definition": null,
+                        "usages": [
+                            {
+                                "file_path": "weak_crypto.go",
+                                "start_line": 19,
+                                "end_line": 19
+                            }
+                        ]
+                    }
+                ]
             },
-            "usages": [
-              {
-                "file_path": "weak_crypto.go",
-                "start_line": 23,
-                "end_line": 23
-              }
-            ]
-          }
-        ]
-      },
-      {
-        "file_path": "weak_crypto.go",
-        "start_line": 20,
-        "end_line": 22,
-        "issue_title": "Improper error handling",
-        "issue_description": "Error from `rsa.GenerateKey` is printed but not handled",
-        "issue_detail": "The program prints the error from `rsa.GenerateKey` but continues execution. This can lead to a panic or unexpected behavior later when the `nil` private key is used.",
-        "comment": "When `rsa.GenerateKey` returns an error, the program prints it but continues to the next line, which attempts to use the `pvk` variable. If an error occurred, `pvk` will be `nil`, and subsequent code might panic or behave incorrectly.\n\nThe program should terminate or return after handling the error. For example, add `return` inside the `if err != nil` block.",
-        "fix_steps": "In `weak_crypto.go`, add a `return` statement on a new line after line 21, inside the `if err != nil` block. This ensures the function exits upon error, preventing use of a potentially `nil` key.",
-        "fix_effort_score": 1,
-        "category": "bug-risk",
-        "severity": "major",
-        "dimension": "reliability",
-        "impact_score": 7,
-        "impact_rationale": "High probability (on error), major impact (unexpected behavior/crash), trivial fix \u2192 high ROI.",
-        "locations_of_interest": [
-          {
-            "identifier_name": "err",
-            "definition": {
-              "file_path": "weak_crypto.go",
-              "start_line": 19,
-              "end_line": 19
-            },
-            "usages": [
-              {
+            {
                 "file_path": "weak_crypto.go",
                 "start_line": 20,
-                "end_line": 20
-              },
-              {
-                "file_path": "weak_crypto.go",
-                "start_line": 21,
-                "end_line": 21
-              }
-            ]
-          }
-        ]
-      }
-    ]
-  },
-  {
-    "comments": [
-      {
-        "file_path": "go.sum",
-        "start_line": 1,
-        "end_line": 10,
-        "issue_title": "Outdated dependencies with known vulnerabilities",
-        "issue_description": "Multiple dependencies are outdated and contain known security vulnerabilities",
-        "issue_detail": "The `go.sum` file pins several `golang.org/x` packages to versions from 2019-2020. These versions are vulnerable to issues like CVE-2023-44487 (`golang.org/x/net`), CVE-2022-27191 (`golang.org/x/crypto`), and CVE-2022-32149 (`golang.org/x/text`).",
-        "comment": "The project's dependencies are pinned to very old versions from 2019 and 2020. This exposes the application to numerous publicly disclosed vulnerabilities that have been fixed in newer versions, including denial of service and other security flaws.\n\nIt is critical to update all dependencies to their latest stable versions to patch these vulnerabilities. Run `go get -u ./...` and `go mod tidy` to update all dependencies to their latest secure versions.",
-        "fix_steps": "1. Open a terminal in the root of the Go module.\n2. Run the command `go get -u ./...` to update all dependencies to their latest versions.\n3. Run the command `go mod tidy` to clean up the `go.mod` and `go.sum` files.\n4. This will replace the outdated dependency versions in `go.sum` with the latest secure versions, mitigating the known vulnerabilities.",
-        "fix_effort_score": 3,
-        "category": "security",
-        "severity": "critical",
-        "dimension": "security",
-        "impact_score": 10,
-        "impact_rationale": "High probability (dependencies are part of build), severe impact (multiple known CVEs leading to DoS), moderate effort to fix (update all dependencies).",
-        "locations_of_interest": [
-          {
-            "identifier_name": "golang.org/x/crypto",
-            "definition": null,
-            "usages": [
-              { "file_path": "go.sum", "start_line": 1, "end_line": 3 }
-            ]
-          },
-          {
-            "identifier_name": "golang.org/x/net",
-            "definition": null,
-            "usages": [
-              { "file_path": "go.sum", "start_line": 4, "end_line": 4 }
-            ]
-          },
-          {
-            "identifier_name": "golang.org/x/sys",
-            "definition": null,
-            "usages": [
-              { "file_path": "go.sum", "start_line": 5, "end_line": 7 }
-            ]
-          },
-          {
-            "identifier_name": "golang.org/x/term",
-            "definition": null,
-            "usages": [
-              { "file_path": "go.sum", "start_line": 8, "end_line": 9 }
-            ]
-          },
-          {
-            "identifier_name": "golang.org/x/text",
-            "definition": null,
-            "usages": [
-              { "file_path": "go.sum", "start_line": 10, "end_line": 10 }
-            ]
-          }
-        ]
-      }
-    ]
-  },
-  {
-    "comments": [
-      {
-        "file_path": "html.go",
-        "start_line": 15,
-        "end_line": 15,
-        "issue_title": "Insecure `template.HTML` usage",
-        "issue_description": "`template.HTML` on un-sanitized data causes XSS",
-        "issue_detail": "Casting the variable `a` to `template.HTML` disables Go's contextual auto-escaping. If `a` contains untrusted user input, this will lead to a cross-site scripting (XSS) vulnerability.",
-        "comment": "The variable `a` is wrapped in `template.HTML`, which tells the template engine to render it without HTML escaping. This is dangerous if `a` originates from an external source, as it would allow an attacker to inject malicious scripts, leading to Cross-Site Scripting (XSS).\n\nTo fix this, remove the `template.HTML` cast to allow for automatic escaping. If `a` is expected to contain HTML, it must be sanitized with a library like bluemonday before rendering.",
-        "fix_steps": "In `html.go`, line 15, remove the `template.HTML` type conversion around the variable `a`. This will ensure Go's `html/template` package applies its default contextual auto-escaping. Change `\"Body\":  template.HTML(a)` to `\"Body\":  a`.",
-        "fix_effort_score": 2,
-        "category": "security",
-        "severity": "critical",
-        "dimension": "security",
-        "impact_score": 9,
-        "impact_rationale": "High probability (common pattern for user data), severe impact (XSS), easy fix = Score 9",
-        "locations_of_interest": [
-          {
-            "identifier_name": "a",
-            "definition": {
-              "file_path": "html.go",
-              "start_line": 11,
-              "end_line": 11
-            },
-            "usages": [
-              { "file_path": "html.go", "start_line": 15, "end_line": 15 }
-            ]
-          },
-          {
-            "identifier_name": "template.HTML",
-            "definition": null,
-            "usages": [
-              { "file_path": "html.go", "start_line": 15, "end_line": 15 }
-            ]
-          }
-        ]
-      }
-    ]
-  },
-  {
-    "comments": [
-      {
-        "file_path": "code.go",
-        "start_line": 155,
-        "end_line": 160,
-        "issue_title": "Potential denial of service",
-        "issue_description": "`make` call inside a loop causes excessive memory allocations",
-        "issue_detail": "The loop allocates a growing slice `productMap` in each of its 2048 iterations. This results in approximately 2GB of memory being allocated, which can exhaust system resources and cause a denial of service.",
-        "comment": "The loop starting on line 155 allocates a new slice `productMap` in every iteration. The size of this slice grows with the loop index, leading to a massive total memory allocation (approximately 2GB). If this function can be triggered by external input, this could be exploited to cause a denial-of-service by exhausting server memory.\n\nThis loop structure should be removed or fundamentally redesigned to avoid allocating huge amounts of memory.",
-        "fix_steps": "In `code.go`, the loop within `traverseProducts` from lines 155-160 causes excessive memory allocation, creating a denial-of-service risk. This code should be removed to mitigate the vulnerability.\nRemove the following lines:\n```go\n\tfor index := 0; index < len(Products); index++ {\n\t\tproductMap := make([][1024]byte, index)\n\t\tfor product, productIndex := range productMap {\n\t\t\tfmt.Println(product, \"indexed as\", productIndex)\n\t\t}\n\t}\n```\nThis eliminates the resource exhaustion vulnerability.",
-        "fix_effort_score": 2,
-        "category": "security",
-        "severity": "critical",
-        "dimension": "security",
-        "impact_score": 9,
-        "impact_rationale": "High probability (every call), severe impact (denial of service), simple fix \u2192 high ROI.",
-        "locations_of_interest": [
-          {
-            "identifier_name": "index",
-            "definition": {
-              "file_path": "code.go",
-              "start_line": 155,
-              "end_line": 155
-            },
-            "usages": [
-              { "file_path": "code.go", "start_line": 156, "end_line": 156 }
-            ]
-          },
-          {
-            "identifier_name": "productMap",
-            "definition": {
-              "file_path": "code.go",
-              "start_line": 156,
-              "end_line": 156
-            },
-            "usages": [
-              { "file_path": "code.go", "start_line": 157, "end_line": 157 }
-            ]
-          },
-          {
-            "identifier_name": "Products",
-            "definition": {
-              "file_path": "code.go",
-              "start_line": 150,
-              "end_line": 150
-            },
-            "usages": [
-              { "file_path": "code.go", "start_line": 155, "end_line": 155 }
-            ]
-          }
-        ]
-      },
-      {
-        "file_path": "code.go",
-        "start_line": 157,
-        "end_line": 157,
-        "issue_title": "Swapped range variables",
-        "issue_description": "Loop variables for `range` over a slice are swapped",
-        "issue_detail": "When using `range` on a slice, the first variable is the index and the second is the value. The variable names `product` and `productIndex` are used in the reverse order, causing confusion and incorrect logic.",
-        "comment": "The `range` operator on a slice returns the index first, then the value. In this loop, `product` will contain the integer index, and `productIndex` will contain the `[1024]byte` array value. This is counter-intuitive based on the variable names and is likely a bug.\n\nTo fix this, the variable names should be swapped to match their roles, for example: `for productIndex, product := range productMap`.",
-        "fix_steps": "In `code.go`, inside the inner loop of `traverseProducts`, correct the swapped variable names to reflect their actual values from the `range` expression.\nReplace the line:\n```go\n\t\tfor product, productIndex := range productMap {\n```\nwith:\n```go\n\t\tfor productIndex, product := range productMap {\n```\nAnd update the `fmt.Println` call accordingly to use the corrected variables. This makes the variable names match their roles, fixing the logical error.",
-        "fix_effort_score": 1,
-        "category": "bug-risk",
-        "severity": "major",
-        "dimension": "reliability",
-        "impact_score": 6,
-        "impact_rationale": "High probability (every call), moderate impact (logic error), simple fix \u2192 good ROI.",
-        "locations_of_interest": [
-          {
-            "identifier_name": "product",
-            "definition": {
-              "file_path": "code.go",
-              "start_line": 157,
-              "end_line": 157
-            },
-            "usages": [
-              { "file_path": "code.go", "start_line": 158, "end_line": 158 }
-            ]
-          },
-          {
-            "identifier_name": "productIndex",
-            "definition": {
-              "file_path": "code.go",
-              "start_line": 157,
-              "end_line": 157
-            },
-            "usages": [
-              { "file_path": "code.go", "start_line": 158, "end_line": 158 }
-            ]
-          },
-          {
-            "identifier_name": "productMap",
-            "definition": {
-              "file_path": "code.go",
-              "start_line": 156,
-              "end_line": 156
-            },
-            "usages": [
-              { "file_path": "code.go", "start_line": 157, "end_line": 157 }
-            ]
-          }
-        ]
-      }
-    ]
-  },
-  {
-    "comments": [
-      {
-        "file_path": "sync_example.go",
-        "start_line": 20,
-        "end_line": 20,
-        "issue_title": "Potential data race in benchmark",
-        "issue_description": "Assignment to a global variable `dataLarge` inside a benchmark loop can cause a data race.",
-        "issue_detail": "The benchmark assigns to the global variable `dataLarge` on each iteration. If `b.RunParallel` is ever used, multiple goroutines will write to `dataLarge` concurrently, causing a data race.",
-        "comment": "The global variable `dataLarge` is written on each loop iteration inside `benchmarkLargeSizePool`. This pattern is unsafe for parallel execution and will cause a data race if the benchmark is ever run with `b.RunParallel`.\n\nTo prevent this, use a local variable inside the loop for assignments, and only assign to the global variable once after the loop completes. This prevents the race while still ensuring the compiler does not optimize away the benchmarked code.",
-        "fix_steps": "In `sync_example.go`, inside the `benchmarkLargeSizePool` function, modify the loop to use a local variable to avoid a potential data race.\n1. Before the `for` loop, declare a local variable: `var data []byte`.\n2. Inside the `for` loop, replace all instances of the global variable `dataLarge` with the local variable `data`.\n3. Remove the line `_ = dataLarge`.\n4. After the `for` loop, add the line `dataLarge = data` to prevent the compiler from optimizing away the benchmark code.",
-        "fix_effort_score": 2,
-        "category": "bug-risk",
-        "severity": "major",
-        "dimension": "reliability",
-        "impact_score": 7,
-        "impact_rationale": "High probability if parallelized, severe impact (data race), and a simple fix lead to a high ROI.",
-        "locations_of_interest": [
-          {
-            "identifier_name": "dataLarge",
-            "definition": {
-              "file_path": "sync_example.go",
-              "start_line": 8,
-              "end_line": 8
-            },
-            "usages": [
-              {
-                "file_path": "sync_example.go",
-                "start_line": 20,
-                "end_line": 20
-              },
-              {
-                "file_path": "sync_example.go",
-                "start_line": 21,
-                "end_line": 21
-              },
-              {
-                "file_path": "sync_example.go",
-                "start_line": 22,
-                "end_line": 22
-              }
-            ]
-          },
-          {
-            "identifier_name": "benchmarkLargeSizePool",
-            "definition": {
-              "file_path": "sync_example.go",
-              "start_line": 12,
-              "end_line": 24
-            },
-            "usages": []
-          }
-        ]
-      },
-      {
-        "file_path": "sync_example.go",
-        "start_line": 13,
-        "end_line": 18,
-        "issue_title": "Ineffective `sync.Pool` usage",
-        "issue_description": "`sync.Pool` is created inside the benchmark function, defeating its purpose of amortizing allocations.",
-        "issue_detail": "A new `sync.Pool` is initialized on every run of the benchmark. This means the pool is always empty at the start of the test loop, and every `Get()` call results in a new allocation, making the benchmark ineffective.",
-        "comment": "The `bytePool` is initialized inside `benchmarkLargeSizePool`, so it's recreated for each benchmark run and cannot be reused. This negates the benefit of using a pool, as each `Get()` call will likely allocate a new object via `New`.\n\nTo correctly benchmark the pool's performance, move the `sync.Pool` initialization to the package level, making it a global variable. This allows it to persist and reuse objects across benchmark iterations.",
-        "fix_steps": "In `sync_example.go`, move the entire `var bytePool = sync.Pool{ ... }` block from inside the `benchmarkLargeSizePool` function to the package level, placing it before the function definition. This will ensure the pool is initialized only once.",
-        "fix_effort_score": 2,
-        "category": "antipattern",
-        "severity": "major",
-        "dimension": "reliability",
-        "impact_score": 8,
-        "impact_rationale": "High probability (always occurs), severe impact (benchmark is invalid), and a simple fix lead to a high ROI.",
-        "locations_of_interest": [
-          {
-            "identifier_name": "bytePool",
-            "definition": {
-              "file_path": "sync_example.go",
-              "start_line": 13,
-              "end_line": 18
-            },
-            "usages": [
-              {
-                "file_path": "sync_example.go",
-                "start_line": 20,
-                "end_line": 20
-              },
-              {
-                "file_path": "sync_example.go",
-                "start_line": 22,
-                "end_line": 22
-              }
-            ]
-          },
-          {
-            "identifier_name": "benchmarkLargeSizePool",
-            "definition": {
-              "file_path": "sync_example.go",
-              "start_line": 12,
-              "end_line": 24
-            },
-            "usages": []
-          }
-        ]
-      }
-    ]
-  },
-  {
-    "comments": [
-      {
-        "file_path": "unsafe_example.go",
-        "start_line": 19,
-        "end_line": 20,
-        "issue_title": "Insecure pointer arithmetic",
-        "issue_description": "Use of `unsafe.Pointer` and `uintptr` bypasses Go's memory safety",
-        "issue_detail": "Performing pointer arithmetic manually can lead to memory corruption or out-of-bounds access. The garbage collector is not aware of `uintptr` references, which can lead to dangling pointers if the underlying object is moved.",
-        "comment": "The code uses `unsafe.Pointer` and `uintptr` to perform manual pointer arithmetic. This is a dangerous practice that bypasses Go's memory safety guarantees and can lead to memory corruption vulnerabilities, which are often exploitable for denial of service or arbitrary code execution.\n\nAvoid using the `unsafe` package for pointer arithmetic. Access array elements using standard index operations (e.g., `intArray[1]`), which are bounds-checked by the compiler and are memory-safe.",
-        "fix_steps": "In `unsafe_example.go`, inside `unsafeCode`, replace lines 19-20 with safe array access.\nOld code:\n```go\n\taddressHolder := uintptr(unsafe.Pointer(intPtr)) + unsafe.Sizeof(intArray[0])\n\tintPtr = (*int)(unsafe.Pointer(addressHolder))\n```\nNew code:\n```go\n\tintPtr = &intArray[1]\n```\nThis change achieves the same result of pointing to the second element of the array without using the `unsafe` package, thus preserving memory safety.",
-        "fix_effort_score": 2,
-        "category": "security",
-        "severity": "major",
-        "dimension": "security",
-        "impact_score": 7,
-        "impact_rationale": "High probability of bugs if used, severe impact (memory corruption), easy fix.",
-        "locations_of_interest": [
-          {
-            "identifier_name": "unsafe.Pointer",
-            "definition": null,
-            "usages": [
-              {
+                "end_line": 22,
+                "issue_title": "Improper error handling",
+                "issue_description": "Error from `rsa.GenerateKey` is ignored, execution continues",
+                "issue_detail": "The error from `rsa.GenerateKey` is printed, but the function continues. If key generation fails, `pvk` will be `nil`, and the subsequent `fmt.Println(pvk)` will print `<nil>`, masking the failure.",
+                "comment": "The error returned from `rsa.GenerateKey` is printed, but program execution is not halted. If key generation fails, the function will continue with a `nil` key, which could lead to unexpected behavior or hide a critical failure.\n\nAfter printing the error, the function should stop execution. Use `return`, or if this is a main executable, consider `log.Fatalf(\"key generation failed: %v\", err)` to terminate the program.",
+                "fix_steps": "In `weak_crypto.go`, inside the `generateRSAKey` function, modify the error handling block. Change lines 20-22 from `if err != nil {\\n\t\tfmt.Println(err)\\n\t}` to `if err != nil {\\n\t\tfmt.Println(err)\\n\t\treturn\\n\t}`. This ensures the function exits if key generation fails.",
+                "fix_effort_score": 1,
+                "category": "bug-risk",
+                "severity": "major",
+                "dimension": "reliability",
+                "impact_score": 7,
+                "impact_rationale": "High probability (if entropy source fails), moderate impact (program continues in invalid state), easy fix -> high ROI.",
+                "locations_of_interest": [
+                    {
+                        "identifier_name": "err",
+                        "definition": {
+                            "file_path": "weak_crypto.go",
+                            "start_line": 19,
+                            "end_line": 19
+                        },
+                        "usages": [
+                            {
+                                "file_path": "weak_crypto.go",
+                                "start_line": 20,
+                                "end_line": 20
+                            },
+                            {
+                                "file_path": "weak_crypto.go",
+                                "start_line": 21,
+                                "end_line": 21
+                            }
+                        ]
+                    }
+                ]
+            }
+        ],
+        "ai_overview": "",
+        "file_path": "weak_crypto.go"
+    },
+    {
+        "comments": [
+            {
                 "file_path": "unsafe_example.go",
                 "start_line": 19,
-                "end_line": 19
-              },
-              {
-                "file_path": "unsafe_example.go",
-                "start_line": 20,
-                "end_line": 20
-              }
-            ]
-          },
-          {
-            "identifier_name": "uintptr",
-            "definition": null,
-            "usages": [
-              {
-                "file_path": "unsafe_example.go",
-                "start_line": 19,
-                "end_line": 19
-              }
-            ]
-          },
-          {
-            "identifier_name": "unsafe.Sizeof",
-            "definition": null,
-            "usages": [
-              {
-                "file_path": "unsafe_example.go",
-                "start_line": 19,
-                "end_line": 19
-              }
-            ]
-          }
-        ]
-      }
-    ]
-  }
+                "end_line": 20,
+                "issue_title": "Insecure pointer arithmetic",
+                "issue_description": "Use of `unsafe` package for pointer arithmetic bypasses memory safety",
+                "issue_detail": "The code manually calculates memory addresses using `uintptr` and `unsafe.Pointer`. This can lead to memory corruption, buffer overflows, or unpredictable crashes, violating Go's type and memory safety guarantees.",
+                "comment": "The function `unsafeCode` uses the `unsafe` package to perform pointer arithmetic. This practice is highly discouraged as it breaks Go's memory safety guarantees, which can introduce subtle, hard-to-debug memory corruption vulnerabilities and makes the code non-portable.\n\nReplace this unsafe memory access with standard, safe array indexing (e.g., `intPtr = &intArray[1]`). The `unsafe` package should be avoided unless absolutely necessary for critical interoperability or performance reasons.",
+                "fix_steps": "In `unsafe_example.go`, inside the `unsafeCode` function, replace the unsafe pointer arithmetic with standard array indexing.\nChange from:\n```go\n\taddressHolder := uintptr(unsafe.Pointer(intPtr)) + unsafe.Sizeof(intArray[0])\n\tintPtr = (*int)(unsafe.Pointer(addressHolder))\n```\nTo:\n```go\n\tintPtr = &intArray[1]\n```\nThis achieves the same result of accessing the second element of the array in a safe, idiomatic, and portable way.",
+                "fix_effort_score": 2,
+                "category": "security",
+                "severity": "major",
+                "dimension": "security",
+                "impact_score": 7,
+                "impact_rationale": "Low probability of exploit (example code), but severe impact (memory corruption) and an easy fix results in a high ROI.",
+                "locations_of_interest": [
+                    {
+                        "identifier_name": "unsafe.Pointer",
+                        "definition": null,
+                        "usages": [
+                            {
+                                "file_path": "unsafe_example.go",
+                                "start_line": 19,
+                                "end_line": 19
+                            },
+                            {
+                                "file_path": "unsafe_example.go",
+                                "start_line": 20,
+                                "end_line": 20
+                            }
+                        ]
+                    },
+                    {
+                        "identifier_name": "uintptr",
+                        "definition": null,
+                        "usages": [
+                            {
+                                "file_path": "unsafe_example.go",
+                                "start_line": 19,
+                                "end_line": 19
+                            }
+                        ]
+                    },
+                    {
+                        "identifier_name": "unsafe.Sizeof",
+                        "definition": null,
+                        "usages": [
+                            {
+                                "file_path": "unsafe_example.go",
+                                "start_line": 19,
+                                "end_line": 19
+                            }
+                        ]
+                    },
+                    {
+                        "identifier_name": "intPtr",
+                        "definition": {
+                            "file_path": "unsafe_example.go",
+                            "start_line": 17,
+                            "end_line": 17
+                        },
+                        "usages": [
+                            {
+                                "file_path": "unsafe_example.go",
+                                "start_line": 18,
+                                "end_line": 18
+                            },
+                            {
+                                "file_path": "unsafe_example.go",
+                                "start_line": 19,
+                                "end_line": 19
+                            },
+                            {
+                                "file_path": "unsafe_example.go",
+                                "start_line": 20,
+                                "end_line": 20
+                            },
+                            {
+                                "file_path": "unsafe_example.go",
+                                "start_line": 21,
+                                "end_line": 21
+                            }
+                        ]
+                    },
+                    {
+                        "identifier_name": "addressHolder",
+                        "definition": {
+                            "file_path": "unsafe_example.go",
+                            "start_line": 19,
+                            "end_line": 19
+                        },
+                        "usages": [
+                            {
+                                "file_path": "unsafe_example.go",
+                                "start_line": 20,
+                                "end_line": 20
+                            }
+                        ]
+                    },
+                    {
+                        "identifier_name": "unsafeCode",
+                        "definition": {
+                            "file_path": "unsafe_example.go",
+                            "start_line": 12,
+                            "end_line": 22
+                        },
+                        "usages": []
+                    }
+                ]
+            }
+        ],
+        "ai_overview": "",
+        "file_path": "unsafe_example.go"
+    }
 ]
